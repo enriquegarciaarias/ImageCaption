@@ -19,15 +19,13 @@ from os.path import realpath
 from sources.common import logger, logProc, processControl, log_
 from sources.utils import configLoader
 from sources.paramsManager import getConfigs
-from sources.processImport import processFeatures
+from sources.processFeatures import processFeatures
 
 
 
 def mainProcess():
     processFeatures()
 
-    #simpleCLIP()
-    #importFlickr()
     return True
 
 

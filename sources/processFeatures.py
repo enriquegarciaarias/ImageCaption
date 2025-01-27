@@ -1,72 +1,10 @@
 from sources.common import logger, logProc, processControl, log_
-
+from sources.processTrain import processTrain
 import requests
 import zipfile
 import os
 import torch
 import shutil
-
-def importFlickr():
-    # URL of the Flickr Image Caption dataset
-    dataset_url = "https://www.kaggle.com/adityajn105/flickr8k"  # Replace with the actual URL
-    dataset_path = os.path.join(processControl.env['data'], "flickr_image_caption_dataset.zip")
-
-    # Download the dataset
-    response = requests.get(dataset_url, stream=True)
-    with open(dataset_path, "wb") as file:
-        for chunk in response.iter_content(chunk_size=8192):
-            file.write(chunk)
-
-    # Extract the dataset
-    with zipfile.ZipFile(dataset_path, "r") as zip_ref:
-        zip_ref.extractall("flickr_image_caption_dataset")
-
-    # Clean up the zip file
-    os.remove(dataset_path)
-
-    print("Dataset downloaded and extracted successfully.")
-
-
-"""
-Make sure to replace "https://example.com/flickr_image_caption_dataset.zip" with the actual URL of the Flickr Image Caption dataset.
-This script assumes the dataset is provided as a zip file.
-If the dataset format or location changes, you may need to adjust the script accordingly.
-"""
-
-def simpleCLIP():
-    import os
-    import clip
-    import torch
-    from torchvision.datasets import CIFAR100
-
-    # Load the model
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, preprocess = clip.load('ViT-B/32', device)
-
-    # Download the dataset
-    cifar100 = CIFAR100(root=os.path.expanduser("~/.cache"), download=True, train=False)
-
-    # Prepare the inputs
-    image, class_id = cifar100[3637]
-    image_input = preprocess(image).unsqueeze(0).to(device)
-    text_inputs = torch.cat([clip.tokenize(f"a photo of a {c}") for c in cifar100.classes]).to(device)
-
-    # Calculate features
-    with torch.no_grad():
-        image_features = model.encode_image(image_input)
-        text_features = model.encode_text(text_inputs)
-
-    # Pick the top 5 most similar labels for the image
-    image_features /= image_features.norm(dim=-1, keepdim=True)
-    text_features /= text_features.norm(dim=-1, keepdim=True)
-    similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-    values, indices = similarity[0].topk(5)
-
-    # Print the result
-    print("\nTop predictions:\n")
-    for value, index in zip(values, indices):
-        print(f"{cifar100.classes[index]:>16s}: {100 * value.item():.2f}%")
-
 
 def featureExtract(device="cuda" if torch.cuda.is_available() else "cpu"):
     image_folder = processControl.env['inputPath']
@@ -158,8 +96,17 @@ def structureFiles(clustered_images):
 
     print("Images have been organized into directories.")
 
+def buildLabels(clustered_images):
+    labels = {}
+    for cluster_label, images in clustered_images.items():
+        for image in images:
+            labels[image] = cluster_label
+    return labels
+
 
 def processFeatures():
     featuresFile = featureExtract()
     clusteredImages, centroids = clusterImages(featuresFile)
     structureFiles(clusteredImages)
+    imagesLabels = buildLabels(clusteredImages)
+    processTrain(featuresFile, imagesLabels)
