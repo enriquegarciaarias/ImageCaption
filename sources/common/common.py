@@ -1,4 +1,4 @@
-from sources import global_vars
+from sources.common import global_vars
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -9,11 +9,12 @@ class HttpStatusError(Exception):
     pass
 
 class controlProcess():
-    def __init__(self,  process={}, data={}, env={}, args={}):
+    def __init__(self,  process={}, data={}, env={}, args={}, defaults={}):
         self.process = process
         self.data = data
         self.env = env
         self.args = args
+        self.defaults = defaults
 
     def to_dict(self):
         return {
@@ -21,6 +22,7 @@ class controlProcess():
             "data": self.data,
             "env": self.env,
             "args": self.args,
+            "defaults": self.defaults
         }
 global_vars.procCtrl = controlProcess()
 processControl = global_vars.procCtrl

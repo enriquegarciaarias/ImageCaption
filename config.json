@@ -1,0 +1,16 @@
+{
+    "environment": {
+        "realPath": "",
+        "inputPath": "process/input",
+        "outputPath": "process/output",
+        ".pycache": ".pycache",
+        "models": "models",
+        "data": "data"
+    },
+    "defaults": {
+        "features": 50,
+        "classes": 5,
+        "smoteFeatures": 1,
+        "imageClasses": ["Panorámica", "Dibujos", "Detalles", "Diapositivas"]
+    }
+}

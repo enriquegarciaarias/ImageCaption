@@ -4,12 +4,10 @@
 """
 
 import argparse
-import json
 import os
 import sys
-import shutil
-from sources.common import processControl
-from sources.utils import configLoader, dbTimestamp
+from sources.common.common import processControl
+from sources.common.utils import configLoader, dbTimestamp
 
 # Constants for parameter files
 JSON_PARMS = "config.json"
@@ -20,10 +18,8 @@ def manageArgs():
     @Result: Returns parsed arguments as a Namespace object.
     """
     parser = argparse.ArgumentParser(description="Main process for Corpus handling.")
-    parser.add_argument('--debug', type=str, help='Debug level: 0 Error, 1 Debug, 2 Info', default="DEBUG")
-    parser.add_argument('--proc', type=str, help="Process type: Check, CORPUS, MODEL, APPLY", default="APPLY")
-    parser.add_argument('--model', type=str, help="algorithm", default="ByLSTM")
-    parser.add_argument('--corpus', type=str, help="Name of corpus", default="NLLP2021")
+    parser.add_argument('--proc', type=str, help="Process type: MODEL, APPLY", default="MODEL")
+    parser.add_argument('--model', type=str, help="lightgbm, transformers", default="transformers")
     return parser.parse_args()
 
 
@@ -36,20 +32,23 @@ def manageEnv():
     config = configLoader()
     environment = config.get_environment()
 
-    env_data = {
-        "timestamp": dbTimestamp(),
-        "realPath": environment["realPath"],
-        "inputPath": os.path.join(environment["realPath"], environment["inputPath"]),
-        "outputPath": os.path.join(environment["realPath"], environment["outputPath"]),
-        ".pycache": os.path.join(environment["realPath"], environment[".pycache"]),
-        "data": os.path.join(environment["realPath"], environment["data"]),
-    }
+    env_data = {}
+    for key, value in environment.items():
+        if "realPath" in key:
+            env_data[key] = value
+        else:
+            env_data[key] = os.path.join(environment["realPath"], value)
+
 
     os.makedirs(env_data['.pycache'], exist_ok=True)
     os.environ['PYTHONPYCACHEPREFIX'] = env_data['.pycache']
     sys.pycache_prefix = env_data['.pycache']
     return env_data
 
+def manageDefaults():
+    config = configLoader()
+    environment = config.get_defaults()
+    return environment
 
 def getConfigs():
     """
@@ -59,5 +58,6 @@ def getConfigs():
 
     processControl.env = manageEnv()
     processControl.args = manageArgs()
+    processControl.defaults = manageDefaults()
 
 

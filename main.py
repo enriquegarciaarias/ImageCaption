@@ -11,31 +11,29 @@
 ~/projects/a6-corpus
 """
 
-import argparse
-import os
-from os.path import realpath
-
-
-from sources.common import logger, logProc, processControl, log_
-from sources.utils import configLoader
-from sources.paramsManager import getConfigs
+from sources.common.common import processControl, logger, log_
+from sources.common.paramsManager import getConfigs
 from sources.processFeatures import processFeatures
-
+from sources.processTrain import processTrain, processApply
+from sources.dataManager import saveModel
 
 
 def mainProcess():
-    processFeatures()
+    processControl.process['modelName'] = "ViT-L/14"
+    processControl.process['pretrainedDataset'] = "laion2b_s32b_b82k"
 
+    if processControl.args.proc == "MODEL":
+        featuresFile, imagesLabels = processFeatures()
+        model = processTrain(featuresFile, imagesLabels)
+        result = saveModel(model, processControl.args.model)
+
+    if processControl.args.proc == "APPLY":
+        processApply()
     return True
-
 
 
 if __name__ == '__main__':
     log_("info", logger, "********** STARTING Main Image Caption Process **********")
-
     getConfigs()
-
-
     mainProcess()
     log_("info", logger, "********** PROCESS COMPLETED **********")
-

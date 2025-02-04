@@ -1,8 +1,6 @@
-from sources.common import processControl
 import json
 
 import time
-import re
 import os
 from os.path import isdir
 
@@ -30,7 +28,7 @@ class configLoader:
     @Desc: Loads and provides access to JSON configuration data.
     @Usage: Instantiates with path to config JSON file.
     """
-    def __init__(self, config_path='sources/config.json'):
+    def __init__(self, config_path='config.json'):
         self.base_path = os.path.realpath(os.getcwd())
         realConfigPath = os.path.join(self.base_path, config_path)
         self.config = self.load_config(realConfigPath)
