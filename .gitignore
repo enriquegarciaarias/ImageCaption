@@ -11,3 +11,4 @@ process/output/*
 !process/output/
 results/*
 models/*
+.idea
