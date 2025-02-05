@@ -1,17 +1,31 @@
 from sources.common.common import logger, processControl, log_
-
 from sources.dataManager import saveModel
 import os
 import torch
 import shutil
 import joblib
 import numpy as np
+from PIL import Image
+from tqdm import tqdm
+import open_clip
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
 def featureExtract(imageFolder, device="cuda" if torch.cuda.is_available() else "cpu"):
-    from PIL import Image
-    from tqdm import tqdm
-    import open_clip
+    """
+    Extract features from images in a specified folder using a pre-trained model.
 
+    This function processes the images in the specified folder and extracts their features using a pre-trained model.
+    The extracted features are returned as a dictionary where the keys are image names and the values are the feature vectors.
+
+    :param imageFolder: Path to the folder containing images from which features will be extracted.
+    :type imageFolder: str
+    :param device: The device on which the model will run, either 'cuda' for GPU or 'cpu'. Defaults to 'cuda' if available.
+    :type device: str, optional
+
+    :return: A dictionary containing the extracted features for each image, with the image names as keys.
+    :rtype: dict
+    """
     def load_model():
         model, preprocess, _ = open_clip.create_model_and_transforms(
             model_name=processControl.process['modelName'],
@@ -40,63 +54,20 @@ def featureExtract(imageFolder, device="cuda" if torch.cuda.is_available() else 
 
     return image_features
 
-def OLDfeatureExtract(device="cuda" if torch.cuda.is_available() else "cpu"):
-    """
-    Extracts image features from a folder of images using a pretrained Vision Transformer model.
-    The features are computed and stored as a PyTorch tensor on the disk for later retrieval or analysis.
 
-    Arguments:
-        device: str
-            The device to perform computation on. Defaults to 'cuda' if available, otherwise 'cpu'.
-
-    Returns:
-        str
-            The path to the file where the extracted features are stored.
-    """
-    image_folder = processControl.env['inputPath']
-
-    from PIL import Image
-    from tqdm import tqdm
-    import open_clip
-
-    def load_model():
-        model, preprocess, _ = open_clip.create_model_and_transforms(
-            model_name=processControl.process['modelName'] ,
-            pretrained=processControl.process['pretrainedDataset']
-        )
-        model.eval()  # Set model to evaluation mode
-        return model, preprocess
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, preprocess = load_model()
-    model.to(device)
-
-    image_features = {}
-    for image_name in tqdm(os.listdir(image_folder), desc="Extracting features"):
-        image_path = os.path.join(processControl.env['inputPath'], image_name)
-        if not os.path.exists(image_path):
-            log_("error", logger, f"Image {image_name} not found.")
-            continue  # Skip missing images
-        try:
-            image = preprocess(Image.open(image_path).convert("RGB")).unsqueeze(0).to(device)
-            with torch.no_grad():
-                features = model.encode_image(image).squeeze(0).cpu()  # Move to CPU for storage
-            image_features[image_name] = features
-        except Exception as e:
-            log_("exception", logger, f"Error processing {image_name}: {e}")
-
-
-    return image_features
 
 def extractFeaturesForInference(imageFolder):
     """
-    Extract features for new images before making predictions.
-    Args:
-        image_list: List of new image filenames.
-        device: Computation device (cuda or cpu).
+    Extract features from images in a specified folder for inference.
 
-    Returns:
-        numpy array of extracted image features.
+    This function extracts features from images stored in a folder, typically used for inference. The extracted features
+    are returned as a numpy array, which can then be processed or used for prediction.
+
+    :param imageFolder: Path to the folder containing images for which features are to be extracted.
+    :type imageFolder: str
+
+    :return: A numpy array containing the extracted features for each image in the folder.
+    :rtype: numpy.ndarray
     """
     features = featureExtract(imageFolder)
     image_features = []
@@ -104,40 +75,22 @@ def extractFeaturesForInference(imageFolder):
         image_features.append(feature)
     return np.array(image_features)
 
-"""
-    from PIL import Image
-    import open_clip
-
-    # Load the model and preprocess functions
-    model, preprocess, tokenizer = open_clip.create_model_and_transforms(
-        model_name=processControl.process['modelName'],
-        pretrained=processControl.process['pretrainedDataset']
-    )
-
-    model.eval().to(device)
-
-    image_features = []
-    for image_name in os.listdir(imageFolder):
-
-        image_path = os.path.join(processControl.env['inputPath'], image_name)
-        if not os.path.exists(image_path):
-            log_("error", logger, f"Image {image_name} not found.")
-            continue  # Skip missing images
-
-        try:
-            image = preprocess(Image.open(image_path).convert("RGB")).unsqueeze(0).to(device)
-            with torch.no_grad():
-                features = model.encode_image(image).squeeze(0).cpu().numpy()
-            image_features.append(features)
-        except Exception as e:
-            log_("error", logger, f"Error processing {image_name}: {e}")
-
-    return np.array(image_features)
-"""
 
 def clusterImages(featuresFile):
-    from sklearn.decomposition import PCA
-    from sklearn.cluster import KMeans
+    """
+    Perform clustering on image features to group images based on similarity.
+
+    This function loads precomputed image features from a specified file, applies PCA for dimensionality reduction,
+    and then clusters the images using KMeans. The images are grouped into clusters based on their feature vectors.
+
+    :param featuresFile: Path to the file containing saved image features.
+    :type featuresFile: str
+
+    :return: A tuple containing:
+        - clustered_images (dict): A dictionary mapping cluster labels to lists of image names.
+        - centroids (numpy.ndarray): The cluster centers after the KMeans clustering.
+    :rtype: tuple
+    """
     # Load saved features
     # weights_only=True se puede incluir para evitar warnings dado que solo queremos cargar los pesos del modelo
     image_features = torch.load(featuresFile, weights_only=True)
@@ -169,6 +122,19 @@ def clusterImages(featuresFile):
     return clustered_images, centroids
 
 def structureFiles(clustered_images):
+    """
+    Organize images into directories based on their cluster labels.
+
+    This function takes a dictionary of clustered images, where each key is a cluster label and
+    the corresponding value is a list of image names. It creates directories named by cluster labels and
+    moves the images into the appropriate directories.
+
+    :param clustered_images: A dictionary mapping cluster labels to lists of image names belonging to those clusters.
+    :type clustered_images: dict
+
+    :return: None
+    :rtype: None
+    """
     for index, images in clustered_images.items():
         # Create directory name
         dir_name = os.path.join(processControl.env['outputPath'], f"images_{index}")
@@ -189,6 +155,19 @@ def structureFiles(clustered_images):
     log_("info", logger, f"Images organized into directories.")
 
 def buildLabels(clustered_images):
+    """
+    Build a mapping of image names to their corresponding cluster labels.
+
+    This function takes a dictionary of clustered images, where each key is a cluster label and
+    the corresponding value is a list of images in that cluster. It then creates a mapping of image names
+    to their respective cluster labels.
+
+    :param clustered_images: A dictionary mapping cluster labels to lists of image names belonging to those clusters.
+    :type clustered_images: dict
+
+    :return: A dictionary mapping image names to their corresponding cluster labels.
+    :rtype: dict
+    """
     labels = {}
     for cluster_label, images in clustered_images.items():
         for image in images:
@@ -197,6 +176,22 @@ def buildLabels(clustered_images):
 
 
 def optimizeDimensions(image_features):
+    """
+    Optimize the dimensionality of image features using PCA.
+
+    This function applies Principal Component Analysis (PCA) to reduce the dimensionality
+    of the extracted image features while retaining the most important variance. It computes
+    the cumulative explained variance and plots it to help select the optimal number of PCA components
+    that capture a desired level of variance (e.g., 95%).
+
+    :param image_features: A dictionary mapping image names to their corresponding feature tensors.
+    :type image_features: dict
+
+    :return: A dictionary mapping image names to their corresponding reduced feature arrays.
+    :rtype: dict
+
+    :note: The number of PCA components is dynamically chosen to capture at least 95% of the explained variance.
+    """
     from sklearn.decomposition import PCA
     import matplotlib.pyplot as plt
 
@@ -229,10 +224,39 @@ def optimizeDimensions(image_features):
     return reduced_feature_dict
 
 def processFeatures():
+    """
+    Extract, optimize, cluster, and organize image features.
+
+    This function performs the following steps:
+    1. Extracts features from images in the specified input directory.
+    2. Optimizes the dimensionality of the extracted features using PCA.
+    3. Saves the extracted features to a file.
+    4. Clusters the images based on their features.
+    5. Organizes the images into directories based on their cluster assignments.
+    6. Builds a mapping of images to their respective cluster labels.
+
+    :return: A tuple containing:
+        - featuresFile (str): The path to the file containing the extracted image features.
+        - imagesLabels (dict): A dictionary mapping image names to their corresponding cluster labels.
+    :rtype: tuple
+    """
+    # Step 1: Extract features from images in the input directory
     imageFeatures = featureExtract(processControl.env['inputPath'])
+
+    # Step 2: Optimize the dimensionality of the extracted features using PCA
     imageFeatures2 = optimizeDimensions(imageFeatures)
+
+    # Step 3: Save the extracted features to a file
     featuresFile = saveModel(imageFeatures, "features")
+
+    # Step 4: Cluster the images based on their features
     clusteredImages, centroids = clusterImages(featuresFile)
+
+    # Step 5: Organize the images into directories based on their clusters
     structureFiles(clusteredImages)
+
+    # Step 6: Build a mapping of images to their cluster labels
     imagesLabels = buildLabels(clusteredImages)
+
+    # Return the path to the features file and the image-to-label mapping
     return featuresFile, imagesLabels

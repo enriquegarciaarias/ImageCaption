@@ -13,12 +13,28 @@ from sources.processFeatures import extractFeaturesForInference
 
 
 def processTrainTransformers(features_file, labels):
+    """
+    Processes feature and label data to train a Transformer-based classification model.
+
+    This function loads feature and label data, converts them into tensors, and prepares a dataset
+    compatible with Hugging Face's `Trainer` API. It splits the data into training and testing sets,
+    initializes a BERT-based model, and configures training parameters. The model is trained,
+    evaluated, and saved to a specified directory. Additionally, the function generates plots
+    to visualize validation loss and accuracy per epoch.
+
+    :param features_file: Path to the file containing feature data.
+    :type features_file: str
+    :param labels: List or array of labels corresponding to the features.
+    :type labels: list or numpy.ndarray
+
+    :return: Path to the saved model directory.
+    :rtype: str
+
+    :raises Exception: If there is an issue with data loading, model training, or saving.
+    """
     from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer
     from datasets import Dataset
     from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
-    import torch
-    import os
-    import numpy as np
     import matplotlib.pyplot as plt
 
     # Cargar datos
@@ -129,6 +145,20 @@ def processTrainTransformers(features_file, labels):
 
 
 def predictTransformers(imageFolder, imageList):
+    """
+    Make predictions using a pre-trained transformer model.
+
+    This function loads a pre-trained transformer model, extracts features from images in the specified folder, applies PCA transformation to these features, and then uses the model to make predictions on the transformed features.
+
+    :param imageFolder: The folder containing the images for which predictions are to be made.
+    :type imageFolder: str
+    :param imageList: A list of image filenames for which predictions are to be made.
+    :type imageList: list
+
+    :return: The predictions made by the transformer model.
+    :rtype: numpy.ndarray
+    """
+
     from transformers import AutoModelForSequenceClassification, Trainer
     from datasets import Dataset
     import joblib
@@ -155,6 +185,21 @@ def predictTransformers(imageFolder, imageList):
     return predictions.predictions
 
 def loadFeatureslabels(features_file, labels):
+    """
+    Load image features and corresponding labels from a file.
+
+    This function loads precomputed image features from a specified file and matches them with their corresponding labels.
+
+    :param features_file: Path to the file containing saved image features.
+    :type features_file: str
+    :param labels: A dictionary mapping image names to their corresponding labels.
+    :type labels: dict
+
+    :return: A tuple containing two lists:
+        - X (list of numpy.ndarray): The list of feature arrays for each image.
+        - y (list): The list of labels corresponding to each image.
+    :rtype: tuple
+    """
     # image_features = torch.load(features_file)
     # weights_only=True se puede incluir para evitar warnings dado que solo queremos cargar los pesos del modelo
     image_features = torch.load(features_file, weights_only=True)
@@ -167,16 +212,22 @@ def loadFeatureslabels(features_file, labels):
 
 def prepare_data(features_file, labels):
     """
-    Prepares data for training and testing with LightGBM.
+    Prepare training and testing data from precomputed features and labels.
 
-    Args:
-        features_file (str): Path to the saved features file (features.pth).
-        labels (dict): Dictionary mapping image names to their cluster labels.
+    This function loads image features and corresponding labels from a specified file, splits the data into training and testing sets, and applies oversampling to the training set if needed. SMOTE or RandomOverSampler can be used to balance the class distribution in the training data.
 
-    Returns:
-        tuple: X_train, X_test, y_train, y_test
+    :param features_file: Path to the file containing the precomputed image features.
+    :type features_file: str
+    :param labels: A dictionary mapping image names to their corresponding labels.
+    :type labels: dict
+
+    :return: A tuple containing the following:
+        - X_train (numpy.ndarray): The feature matrix for the training set.
+        - X_test (numpy.ndarray): The feature matrix for the test set.
+        - y_train (numpy.ndarray): The labels for the training set.
+        - y_test (numpy.ndarray): The labels for the test set.
+    :rtype: tuple
     """
-
     X, y = loadFeatureslabels(features_file, labels)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
@@ -193,40 +244,26 @@ def prepare_data(features_file, labels):
     return X_train, X_test, y_train, y_test
 
 
-def OLDprocessTrainLightgbm(X_train, X_test, y_train, y_test):
-    """
-    Train and evaluate a LightGBM classifier.
-
-    Args:
-        X_train: Training feature set.
-        X_test: Testing feature set.
-        y_train: Training labels.
-        y_test: Testing labels.
-    """
-    from sklearn.decomposition import PCA
-    from sklearn.metrics import classification_report
-    pca = PCA(n_components=processControl.defaults['features'])
-    X_train = pca.fit_transform(X_train)
-    X_test = pca.transform(X_test)
-    log_("debug", logger, f"Varianza PCA: {pca.explained_variance_ratio_}")
-    print("Train shape before LightGBM:", X_train.shape)
-    print("Test shape before LightGBM:", X_test.shape)
-    # Create LightGBM classifier
-    clf = lgb.LGBMClassifier(random_state=42)
-
-    # Train the classifier
-    clf.fit(X_train, y_train)
-
-    # Predict on test data
-    y_pred = clf.predict(X_test)
-
-    # Evaluate performance
-    print("Classification Report:")
-    print(classification_report(y_test, y_pred))
-
-    return clf
-
 def processTrainLightgbm(X_train, X_test, y_train, y_test):
+    """
+    Train a LightGBM model on preprocessed training data and evaluate its performance.
+
+    This function normalizes the input features using StandardScaler, applies PCA for dimensionality reduction, trains a LightGBM classifier on the transformed features, and evaluates the model on the test set. A classification report is printed to show the model's performance.
+
+    :param X_train: Training feature matrix.
+    :type X_train: numpy.ndarray
+    :param X_test: Testing feature matrix.
+    :type X_test: numpy.ndarray
+    :param y_train: Training labels.
+    :type y_train: numpy.ndarray
+    :param y_test: Testing labels.
+    :type y_test: numpy.ndarray
+
+    :return: The trained LightGBM classifier.
+    :rtype: lightgbm.LGBMClassifier
+
+    :raises ValueError: If the input feature matrices do not have matching numbers of samples.
+    """
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import StandardScaler
     from sklearn.metrics import classification_report
@@ -266,40 +303,22 @@ def processTrainLightgbm(X_train, X_test, y_train, y_test):
     return clf
 
 
-def OLDpredictLightgbm(X_new):
-    """
-    Load a trained LightGBM model and make predictions on new data.
-
-    Args:
-        model_path: Path to the saved model.
-        X_new: New data for inference.
-
-    Returns:
-        Predictions for the new data.
-    """
-    modelPath = os.path.join(processControl.env['models'], "lightgbm_model.pkl")
-    # Load the trained model
-    if not os.path.exists(modelPath):
-        raise FileNotFoundError(f"Model file not found at {modelPath}")
-
-    clf = joblib.load(modelPath)
-    log_("info", logger, f"Model loaded from {modelPath}")
-
-    # Make predictions on new data
-    predictions = clf.predict(X_new)
-    return predictions
-
-
-
 def predictLightgbm(imageFolder, imageList):
     """
-    Extract image features, load trained LightGBM model, and make predictions.
+    Predict the labels for a list of images using a pre-trained LightGBM model.
 
-    Args:
-        image_list: List of new image filenames.
+    This function loads a pre-trained LightGBM model and PCA transformation, extracts features for the new images, applies PCA, and makes predictions using the loaded model.
 
-    Returns:
-        Predicted clusters for new images.
+    :param imageFolder: Path to the folder containing the images for which predictions are to be made.
+    :type imageFolder: str
+    :param imageList: List of image filenames for which predictions are to be generated.
+    :type imageList: list
+
+    :return: A dictionary mapping image filenames to their predicted labels.
+    :rtype: dict
+
+    :raises FileNotFoundError: If the model file is not found at the specified path.
+    :raises ValueError: If no valid image features are extracted from the input images.
     """
     modelPath = os.path.join(processControl.env['models'], "lightgbm_model.pkl")
 
@@ -324,6 +343,19 @@ def predictLightgbm(imageFolder, imageList):
 
 
 def processTrain(featuresFile, imagesLabels):
+    """
+    Train a model based on the specified model type in processControl.
+
+    This function trains a model using either LightGBM or transformers, depending on the model type specified in `processControl.args.model`. It prepares the training data, trains the model, and returns the trained model.
+
+    :param featuresFile: Path to the file containing the image features.
+    :type featuresFile: str
+    :param imagesLabels: A dictionary mapping image names to their corresponding labels.
+    :type imagesLabels: dict
+
+    :return: The trained model.
+    :rtype: model
+    """
     model = None
 
     if processControl.args.model == "lightgbm":
@@ -335,6 +367,15 @@ def processTrain(featuresFile, imagesLabels):
     return model
 
 def processApply():
+    """
+    Applies the selected model (LightGBM or Transformers) to predict image clusters.
+
+    This function extracts features from images located in the specified input path,
+    applies the selected model to make predictions, and returns the predicted clusters.
+
+    :return: A dictionary mapping image filenames to their predicted clusters.
+    :rtype: dict
+    """
     imageFolder = processControl.env['inputPath']
     imageList = os.listdir(imageFolder)
     log_("info", logger, f"Extracting features for {len(imageList)} images with model {processControl.args.model}")
@@ -345,5 +386,3 @@ def processApply():
         imagesPredicted = predictTransformers(imageFolder, imageList)
 
     return imagesPredicted
-
-
