@@ -36,7 +36,11 @@ def mainProcess():
 
     # APPLY mode: Apply the trained model to new data
     if processControl.args.proc == "APPLY":
-        processApply()
+        if processControl.args.model == "LLM":
+            from sources.processLLM import processLLM
+            processLLM()
+        else:
+            processApply()
 
     return True
 

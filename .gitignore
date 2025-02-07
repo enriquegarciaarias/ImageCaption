@@ -4,11 +4,11 @@ Process.txt
 __pycache__/
 .pycache
 .cadence
+models/*
 imagecaption_env
 process/input/*
 !process/input/
 process/output/*
 !process/output/
 results/*
-models/*
 .idea

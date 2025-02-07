@@ -68,7 +68,7 @@ def processTrainTransformers(features_file, labels):
     training_args = TrainingArguments(
         output_dir="./results",
         evaluation_strategy="epoch",
-        num_train_epochs=3,
+        num_train_epochs=5,
         per_device_train_batch_size=16,
         per_device_eval_batch_size=16
     )

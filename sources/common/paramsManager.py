@@ -18,8 +18,8 @@ def manageArgs():
     @Result: Returns parsed arguments as a Namespace object.
     """
     parser = argparse.ArgumentParser(description="Main process for Corpus handling.")
-    parser.add_argument('--proc', type=str, help="Process type: MODEL, APPLY", default="MODEL")
-    parser.add_argument('--model', type=str, help="lightgbm, transformers", default="transformers")
+    parser.add_argument('--proc', type=str, help="Process type: MODEL, APPLY", default="APPLY")
+    parser.add_argument('--model', type=str, help="lightgbm, transformers, LLM", default="LLM")
     return parser.parse_args()
 
 
