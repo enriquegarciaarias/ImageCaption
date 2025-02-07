@@ -4,7 +4,6 @@ Process.txt
 config.json
 __pycache__/
 .pycache
-.cadence
 models/*
 !models
 imagecaption_env
@@ -15,3 +14,4 @@ process/output/*
 !process/output/
 results/*
 .idea
+.cadence
