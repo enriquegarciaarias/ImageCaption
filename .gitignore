@@ -1,6 +1,7 @@
 *.log
 ProcessLog.txt
 Process.txt
+config.json
 __pycache__/
 .pycache
 .cadence

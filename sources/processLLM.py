@@ -25,7 +25,7 @@ from huggingface_hub import login
 def huggingface_login():
     try:
         # Add your Hugging Face token here, or retrieve it from environment variables
-        token = "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"
+        token = processControl.defaults['token'] if 'token' in processControl.defaults else ['', '']
         login(token)
         print("Successfully logged in to Hugging Face.")
     except Exception as e:
