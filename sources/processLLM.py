@@ -32,6 +32,7 @@ def huggingface_login():
         print("Error logging into Hugging Face:", str(e))
         raise
 
+
 def processLLM():
     huggingface_login()
     # Cargar el tokenizador y el modelo LLaMA 2
@@ -131,4 +132,4 @@ El Anfiareio era, en un principio, un santuario medicinal y ctónico del héroe 
     outputs = model.generate(**inputs, max_length=300)  # Ajusta max_length según sea necesario
     descripcion = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    print("Descripción generada:", descripcion)
+    log_("info", logger, f"Descripción generada: {descripcion}")

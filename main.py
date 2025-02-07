@@ -60,9 +60,9 @@ if __name__ == '__main__':
 
     :return: None
     """
-    # Log the start of the process
+
     log_("info", logger, "********** STARTING Main Image Caption Process **********")
     getConfigs()
     mainProcess()
-    # Log the completion of the process
+
     log_("info", logger, "********** PROCESS COMPLETED **********")

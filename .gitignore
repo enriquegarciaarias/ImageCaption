@@ -6,8 +6,10 @@ __pycache__/
 .pycache
 .cadence
 models/*
+!models
 imagecaption_env
 process/input/*
+!process
 !process/input/
 process/output/*
 !process/output/
