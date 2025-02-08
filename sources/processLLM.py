@@ -41,6 +41,7 @@ def huggingface_login():
 
 def processMistral():
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    log_("info", logger, f"Using device: {device}")
 
     long_text = convert_docx_to_txt(os.path.join(processControl.env['inputPath'], 'RAMNOUS.docx'))
 
@@ -67,7 +68,7 @@ def processMistral():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME_LLM)
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME_LLM, torch_dtype=torch.float16, device_map="auto"
-    )
+    ).to(device)
 
     caption = generate_caption(tokenizer, model, metadata, extracted_text)
     print("\n📝 Caption Generado:\n", caption)
