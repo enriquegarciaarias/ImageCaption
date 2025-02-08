@@ -12,6 +12,10 @@ from sources.processFeatures import processFeatures
 from sources.processTrain import processTrain, processApply
 from sources.dataManager import saveModel
 
+import socket
+import torch
+
+
 
 def mainProcess():
     """
@@ -69,6 +73,32 @@ if __name__ == '__main__':
 
     log_("info", logger, "********** STARTING Main Image Caption Process **********")
     getConfigs()
-    mainProcess()
+
+
+    print(f"System Name: {processControl.env['systemName']}")
+    if processControl.env['systemName'] == "tesla.informatica.uned.es":
+        import torch.distributed as dist
+        dist.init_process_group(backend='nccl')
+        log_("info", logger, "This is TESLA")
+        mainProcess()
+        dist.destroy_process_group()
+    elif processControl.env['systemName'] == "PULSAR-PRO":
+        log_("info", logger, "This is PULSAR-PRO")
+        os.environ["RANK"] = "0"
+        os.environ["WORLD_SIZE"] = "1"
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = "12345"
+
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+        torch.cuda.set_per_process_memory_fraction(0.98, device=0)
+        torch.backends.cuda.max_split_size_mb = 64
+        mainProcess()
+
+    else:
+        log_("info", logger, "This is Local")
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        mainProcess()
+
+
 
     log_("info", logger, "********** PROCESS COMPLETED **********")
