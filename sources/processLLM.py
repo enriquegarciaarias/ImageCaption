@@ -83,7 +83,8 @@ def processMistral():
     Extrae del texto largo una descripción relevante para la imagen, teniendo en cuenta que es una "Panorámica" del "Santuario de Némesis" ubicado en "Ática". La descripción debe ser concisa (máximo 100 palabras) y enfocarse en los elementos visuales o contextuales que podrían aparecer en una imagen panorámica del yacimiento.
     """
 
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)  # Enviar a GPU
+    model_device = model.device
+    inputs = tokenizer(prompt, return_tensors="pt").to(model_device)  # Enviar a GPU
     outputs = model.generate(**inputs, max_new_tokens=300)
     descripcion = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
