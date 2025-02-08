@@ -66,9 +66,14 @@ def processMistral():
     extracted_text = "\n\n".join(relevant_paragraphs)
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME_LLM)
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME_LLM, torch_dtype=torch.float16, device_map="auto"
-    ).to(device)
+    if processControl.env['systemName'] == "tesla.informatica.uned.es":
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME_LLM, torch_dtype=torch.float16, device_map="auto"
+        ).to(device)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME_LLM, torch_dtype=torch.float16, device_map="auto"
+        )
 
     caption = generate_caption(tokenizer, model, metadata, extracted_text)
     print("\n📝 Caption Generado:\n", caption)
@@ -81,7 +86,7 @@ def processMistral():
     {caption}
 
     Instrucciones:
-    Extrae del texto largo una descripción relevante para la imagen, teniendo en cuenta que es una "Panorámica" del "Santuario de Némesis" ubicado en "Ática". La descripción debe ser concisa (máximo 100 palabras) y enfocarse en los elementos visuales o contextuales que podrían aparecer en una imagen panorámica del yacimiento.
+    Extrae del texto largo una descripción relevante para la imagen, teniendo en cuenta que es una "{metadata['cluster']}" del "{metadata['site_name']}" correspondiente a "{metadata['image_title']}" ubicado en "{metadata['site_zone']}". La descripción debe ser concisa (máximo 50 palabras) y enfocarse en los elementos visuales o contextuales que podrían aparecer en la imagen indicada.
     """
 
     model_device = model.device
