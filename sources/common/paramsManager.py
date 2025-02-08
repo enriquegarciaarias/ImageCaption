@@ -6,6 +6,7 @@
 import argparse
 import os
 import sys
+import socket
 from sources.common.common import processControl
 from sources.common.utils import configLoader, dbTimestamp
 
@@ -43,6 +44,7 @@ def manageEnv():
     os.makedirs(env_data['.pycache'], exist_ok=True)
     os.environ['PYTHONPYCACHEPREFIX'] = env_data['.pycache']
     sys.pycache_prefix = env_data['.pycache']
+    env_data['systemName'] = socket.getfqdn()
     return env_data
 
 def manageDefaults():
