@@ -39,18 +39,20 @@ def featureExtract(imageFolder, device="cuda" if torch.cuda.is_available() else 
     model.to(device)
 
     image_features = {}
+    supported_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff']
     for image_name in tqdm(os.listdir(imageFolder), desc="Extracting features"):
-        image_path = os.path.join(processControl.env['inputPath'], image_name)
-        if not os.path.exists(image_path):
-            log_("error", logger, f"Image {image_name} not found.")
-            continue  # Skip missing images
-        try:
-            image = preprocess(Image.open(image_path).convert("RGB")).unsqueeze(0).to(device)
-            with torch.no_grad():
-                features = model.encode_image(image).squeeze(0).cpu()  # Move to CPU for storage
-            image_features[image_name] = features
-        except Exception as e:
-            log_("exception", logger, f"Error processing {image_name}: {e}")
+        if os.path.splitext(image_name)[1].lower() in supported_extensions:
+            image_path = os.path.join(processControl.env['inputPath'], image_name)
+            if not os.path.exists(image_path):
+                log_("error", logger, f"Image {image_name} not found.")
+                continue  # Skip missing images
+            try:
+                image = preprocess(Image.open(image_path).convert("RGB")).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    features = model.encode_image(image).squeeze(0).cpu()  # Move to CPU for storage
+                image_features[image_name] = features
+            except Exception as e:
+                log_("exception", logger, f"Error processing {image_name}: {e}")
 
     return image_features
 

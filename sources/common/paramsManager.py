@@ -19,7 +19,7 @@ def manageArgs():
     """
     parser = argparse.ArgumentParser(description="Main process for Corpus handling.")
     parser.add_argument('--proc', type=str, help="Process type: MODEL, APPLY", default="APPLY")
-    parser.add_argument('--model', type=str, help="lightgbm, transformers, LLM", default="LLM")
+    parser.add_argument('--model', type=str, help="lightgbm, transformers, LLM", default="MISTRAL")
     return parser.parse_args()
 
 

@@ -58,3 +58,21 @@ class configLoader:
         return self.config.get("defaults", {})
 
 
+def convert_docx_to_txt(input_path, output_path=None):
+    from docx import Document
+    """
+    Convierte un archivo DOCX a TXT extrayendo todo el texto.
+
+    :param input_path: Ruta del archivo .docx de entrada.
+    :param output_path: Ruta del archivo .txt de salida.
+    """
+
+    doc = Document(input_path)
+    text = "\n".join([paragraph.text for paragraph in doc.paragraphs])  # Extrae texto con saltos de línea
+
+    if output_path:
+        with open(output_path, "w", encoding="utf-8") as txt_file:
+            txt_file.write(text)
+
+
+    return text

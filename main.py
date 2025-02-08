@@ -1,6 +1,9 @@
 """
 @Purpose: Main script for initializing environment settings and start procesing the Image Captioning project, handling main modes:
 @Usage: Run `python mainProcess.py`.
+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
+
+"token": "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”
 """
 
 from sources.common.common import processControl, logger, log_
@@ -39,6 +42,9 @@ def mainProcess():
         if processControl.args.model == "LLM":
             from sources.processLLM import processLLM
             processLLM()
+        elif processControl.args.model == "MISTRAL":
+            from sources.processLLM import processMistral
+            processMistral()
         else:
             processApply()
 

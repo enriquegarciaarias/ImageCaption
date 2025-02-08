@@ -11,6 +11,7 @@
         "features": 50,
         "classes": 4,
         "smoteFeatures": 1,
-        "imageClasses": ["Panorámica", "Dibujos", "Detalles", "Diapositivas"]
+        "imageClasses": ["Panorámica", "Dibujos", "Detalles", "Diapositivas"],
+        "token": "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"
     }
 }
