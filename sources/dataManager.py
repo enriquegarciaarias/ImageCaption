@@ -3,6 +3,7 @@ from sources.common.common import logger, processControl, log_
 import torch
 import joblib
 import os
+import shutil
 
 def saveModel(model, type):
     """
@@ -36,3 +37,28 @@ def saveModel(model, type):
     log_("info", logger, f"Model type: {type} saved to {modelPath}")
     return modelPath
 
+def writeFilesCategories(clusteredImages, model):
+    """
+    Organize images into directories based on their cluster labels.
+
+    This function takes a dictionary of clustered images, where each key is a cluster label and
+    the corresponding value is a list of image names. It creates directories named by cluster labels and
+    moves the images into the appropriate directories.
+
+    :param clustered_images: A dictionary mapping cluster labels to lists of image names belonging to those clusters.
+    :type clustered_images: dict
+
+    :return: None
+    :rtype: None
+    """
+    dirModelPath = os.path.join(processControl.env['outputPath'], model)
+    if not os.path.exists(dirModelPath):
+        os.makedirs(dirModelPath)
+    for index, image_info in enumerate(clusteredImages):
+
+        dirCategory = os.path.join(dirModelPath, f"category_{image_info['category']}")
+        if not os.path.exists(dirCategory):
+            os.makedirs(dirCategory)
+        shutil.copy(image_info['path'], os.path.join(dirCategory, image_info['name']))
+
+    log_("info", logger, f"Images organized into directories.")

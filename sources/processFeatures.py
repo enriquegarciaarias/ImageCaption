@@ -1,7 +1,10 @@
 from sources.common.common import logger, processControl, log_
-from sources.dataManager import saveModel
+from sources.dataManager import saveModel, writeFilesCategories
+from sources.common.utils import buildImageProcess
+
 import os
 import torch
+import torch.nn as nn
 import shutil
 import joblib
 import numpy as np
@@ -10,6 +13,268 @@ from tqdm import tqdm
 import open_clip
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+
+from transformers import BertTokenizer, BertModel
+
+bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+bert_model = BertModel.from_pretrained("bert-base-uncased")
+
+
+def extract_features(imagesList, mode="clip", device="cuda" if torch.cuda.is_available() else "cpu"):
+    # Cargar la imagen
+    image_features = {}
+    try:
+        if mode == "clip":
+            from transformers import CLIPProcessor, CLIPModel
+            # Cargar el modelo y el procesador de CLIP
+            model_name = "openai/clip-vit-base-patch32"
+            processor = CLIPProcessor.from_pretrained(model_name)
+            model = CLIPModel.from_pretrained(model_name).to(device)
+            for imagePro in tqdm(imagesList, desc="Extracting features"):
+                image = Image.open(imagePro['path']).convert("RGB")
+                inputs = processor(images=image, return_tensors="pt", padding=True).to(device)
+                with torch.no_grad():
+                    features = model.get_image_features(**inputs).squeeze(0).cpu()
+                image_features[imagePro['name']] = features
+
+
+        elif mode == "dino":
+            from transformers import Dinov2Model, Dinov2ImageProcessor
+            # Cargar el modelo y el procesador de DINOv2
+            model_name = "facebook/dinov2-base"
+            processor = Dinov2ImageProcessor.from_pretrained(model_name)
+            model = Dinov2Model.from_pretrained(model_name)
+            for imagePro in tqdm(imagesList, desc="Extracting features"):
+                image = Image.open(imagePro['path']).convert("RGB")
+                inputs = processor(images=image, return_tensors="pt")
+                with torch.no_grad():
+                    features = model(**inputs).last_hidden_state.mean(dim=1)
+                image_features[imagePro['name']] = features
+
+        elif mode == "VIT":
+            def load_model():
+                model, preprocess, _ = open_clip.create_model_and_transforms(
+                    model_name=processControl.process['modelName'],
+                    pretrained=processControl.process['pretrainedDataset']
+                )
+                model.eval()  # Set model to evaluation mode
+                return model, preprocess
+
+            model, preprocess = load_model()
+            model.to(device)
+            for imagePro in tqdm(imagesList, desc="Extracting features"):
+                image = preprocess(Image.open(imagePro['path']).convert("RGB")).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    features = model.encode_image(image).squeeze(0).cpu() # Move to CPU for storage
+                image_features[imagePro['name']] = features
+    except Exception as e:
+        raise Exception(f"Error processing {imagePro['name']}: {e}")
+
+    return image_features
+
+
+def get_text_embedding(text):
+    # Tokenizar el texto y convertirlo a tensores
+    inputs = bert_tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=128)
+
+    # Obtener el embedding del texto
+    with torch.no_grad():
+        outputs = bert_model(**inputs)
+        embedding = outputs.last_hidden_state.mean(dim=1)  # Pooling sobre los tokens
+
+    return embedding
+
+
+class MetadataGuidedAttention(nn.Module):
+    def __init__(self, visual_feature_dim, text_feature_dim):
+        super(MetadataGuidedAttention, self).__init__()
+        self.visual_feature_dim = visual_feature_dim
+        self.text_feature_dim = text_feature_dim
+
+        # Capa de atención
+        self.attention = nn.Sequential(
+            nn.Linear(visual_feature_dim + text_feature_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1)
+        )
+
+    def forward(self, visual_features, text_embedding):
+        # Asegurar que text_embedding tenga la forma correcta
+        if text_embedding.dim() == 3:  # Si text_embedding tiene forma (batch_size, 1, 768)
+            text_embedding = text_embedding.squeeze(1)  # Eliminar la dimensión intermedia
+
+        # Expandir text_embedding para que coincida con las dimensiones de visual_features
+        #text_embedding = text_embedding.unsqueeze(1).expand(-1, visual_features.size(1), -1)
+
+        # Concatenar características visuales y de texto
+        combined = torch.cat([visual_features, text_embedding], dim=-1)
+
+        # Calcular pesos de atención
+        attention_weights = torch.softmax(self.attention(combined), dim=1)
+
+        # Aplicar atención a las características visuales
+        attended_features = torch.sum(attention_weights * visual_features, dim=1)
+
+        return attended_features
+
+
+def extract_guided_features(imagesList, imagesMeta, device="cuda" if torch.cuda.is_available() else "cpu"):
+    # Extraer características visuales
+    image_features = extract_features(imagesList)  # Usando CLIP o DINOv2
+
+    titles = []
+    titles = [meta for meta in imagesMeta]
+
+    # Generar embeddings de texto para todos los títulos
+    title_embeddings = torch.stack([get_text_embedding(title) for title in titles]).to(device)
+
+    feature_tensors = torch.stack([image_features[name] for name in titles]).to(device)
+    # Asegurar que title_embeddings y feature_tensors tengan dimensiones compatibles
+    if title_embeddings.dim() == 3:  # Si tiene forma (69, 1, 768)
+        title_embeddings = title_embeddings.squeeze(1)  # Convertir a (69, 768)
+
+    if feature_tensors.dim() == 3:  # Si tiene forma (69, 1, 512)
+        feature_tensors = feature_tensors.squeeze(1)  # Convertir a (69, 512)
+
+    # Crear el modelo de atención
+    attention_model = MetadataGuidedAttention(feature_tensors.size(-1), title_embeddings.size(-1)).to(device)
+    guided_features = attention_model(feature_tensors, title_embeddings)
+
+    # Convertir a array NumPy
+    return guided_features.cpu().detach().numpy()  # Convertir a NumPy y mover a CPU si es necesario
+
+def show_clusters(image_categories):
+    for img_path, label in image_categories.items():
+        log_("info", logger, f"Imagen: {img_path}, Categoría: {label}")
+
+
+def clustering_images(features_matrix, imagesList):
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    features_matrix = scaler.fit_transform(features_matrix)
+
+    num_clusters = len(processControl.defaults['imageClasses'])
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+    cluster_labels = kmeans.fit_predict(features_matrix)
+
+    # Asignar etiquetas a las imágenes
+    image_paths = [image['path'] for image in imagesList]
+    image_categories = {img_path: label for img_path, label in zip(image_paths, cluster_labels)}
+    return image_categories
+
+
+def fillImageMetadata(imagesList):
+    imagesMeta = {}
+    for image in imagesList:
+        name = image['name']
+        imagesMeta[name] = {"text": name, "path": image['path']}
+    return imagesMeta
+
+
+def newProcessFeatures():
+    import numpy as np
+
+    imagesList = buildImageProcess(processControl.env['inputPath'])
+    imagesMeta = fillImageMetadata(imagesList)
+    features_list = extract_guided_features(imagesList, imagesMeta)
+
+    # Convertir la lista de características a una matriz 2D
+    features_matrix = np.vstack(features_list)
+    image_categories = clustering_images(features_matrix, imagesList)
+
+    otherCat = clusterImages(None, features_list)
+
+    for index, image_info in enumerate(imagesList):
+        imagesList[index]['features'] = features_matrix[index]
+        imagePath = image_info['path']
+        imagesList[index]['category'] = image_categories[imagePath]
+
+    show_clusters(image_categories)
+    writeFilesCategories(imagesList, processControl.args.featuresmodel)
+    return imagesList
+
+
+def clusterImages(featuresFile=None, image_features=None):
+    """
+    Perform clustering on image features to group images based on similarity.
+
+    This function loads precomputed image features from a specified file, applies PCA for dimensionality reduction,
+    and then clusters the images using KMeans. The images are grouped into clusters based on their feature vectors.
+
+    :param featuresFile: Path to the file containing saved image features.
+    :type featuresFile: str
+
+    :return: A tuple containing:
+        - clustered_images (dict): A dictionary mapping cluster labels to lists of image names.
+        - centroids (numpy.ndarray): The cluster centers after the KMeans clustering.
+    :rtype: tuple
+    """
+    if featuresFile:
+        # Load saved features
+        # weights_only=True se puede incluir para evitar warnings dado que solo queremos cargar los pesos del modelo
+        # image_features dict 'imagename':tensor(1,512)
+        image_features = torch.load(featuresFile, weights_only=True)
+
+        # Convert feature tensors to a matrix for clustering
+        #feature_matrix ndarray(69,1,512)
+        feature_matrix = torch.stack(list(image_features.values())).numpy()
+
+    else:
+        #image_features "img":Tensor (768,) en VIT
+        feature_matrix = np.array([tensor.numpy() for tensor in image_features.values()])
+
+    # Dimensionality reduction (optional)
+    pca = PCA(n_components=processControl.defaults['features'])  # Reduce dimensions
+    reduced_features = pca.fit_transform(feature_matrix)
+    joblib.dump(pca, os.path.join(processControl.env['models'], "pca_transform.pkl"))
+    # Clustering
+    num_clusters = len(processControl.defaults['imageClasses'])
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+    kmeans.fit(reduced_features)  # Train clustering
+    cluster_labels = kmeans.predict(reduced_features)
+
+    centroids = kmeans.cluster_centers_
+
+    # Assign images to clusters
+    clustered_images = {i: [] for i in range(num_clusters)}
+    for idx, image_name in enumerate(image_features.keys()):
+        clustered_images[cluster_labels[idx]].append(image_name)
+
+    # Print clusters
+    for cluster, images in clustered_images.items():
+        log_("info", logger, f"Clustering {len(images)} images")
+
+    return clustered_images
+
+
+def processFeaturesVIT(imageFolder):
+    def load_model():
+        model, preprocess, _ = open_clip.create_model_and_transforms(
+            model_name=processControl.process['modelName'],
+            pretrained=processControl.process['pretrainedDataset']
+        )
+        model.eval()  # Set model to evaluation mode
+        return model, preprocess
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model, preprocess = load_model()
+    model.to(device)
+
+    image_features = {}
+    imagesList = buildImageProcess(processControl.env['inputPath'])
+    try:
+        for imageProc in imagesList:
+
+            image = preprocess(Image.open(imageProc['path']).convert("RGB")).unsqueeze(0).to(device)
+            with torch.no_grad():
+                features = model.encode_image(image).squeeze().cpu()  # Move to CPU for storage
+            image_features[imageProc[1]] = features
+    except Exception as e:
+            log_("exception", logger, f"Error processing {imageProc['name']}: {e}")
+
+    return image_features
+
+
 
 def featureExtract(imageFolder, device="cuda" if torch.cuda.is_available() else "cpu"):
     """
@@ -26,33 +291,17 @@ def featureExtract(imageFolder, device="cuda" if torch.cuda.is_available() else 
     :return: A dictionary containing the extracted features for each image, with the image names as keys.
     :rtype: dict
     """
-    def load_model():
-        model, preprocess, _ = open_clip.create_model_and_transforms(
-            model_name=processControl.process['modelName'],
-            pretrained=processControl.process['pretrainedDataset']
-        )
-        model.eval()  # Set model to evaluation mode
-        return model, preprocess
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, preprocess = load_model()
-    model.to(device)
-
     image_features = {}
-    supported_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff']
-    for image_name in tqdm(os.listdir(imageFolder), desc="Extracting features"):
-        if os.path.splitext(image_name)[1].lower() in supported_extensions:
-            image_path = os.path.join(processControl.env['inputPath'], image_name)
-            if not os.path.exists(image_path):
-                log_("error", logger, f"Image {image_name} not found.")
-                continue  # Skip missing images
-            try:
-                image = preprocess(Image.open(image_path).convert("RGB")).unsqueeze(0).to(device)
-                with torch.no_grad():
-                    features = model.encode_image(image).squeeze(0).cpu()  # Move to CPU for storage
-                image_features[image_name] = features
-            except Exception as e:
-                log_("exception", logger, f"Error processing {image_name}: {e}")
+    """
+    if processControl.args.featuresmodel == "VIT":
+        image_features = processFeaturesVIT(imageFolder)
+        return image_features    
+    """
+
+
+    imagesList = buildImageProcess(imageFolder)
+
+    image_features = extract_features(imagesList, processControl.args.featuresmodel)
 
     return image_features
 
@@ -78,52 +327,9 @@ def extractFeaturesForInference(imageFolder):
     return np.array(image_features)
 
 
-def clusterImages(featuresFile):
-    """
-    Perform clustering on image features to group images based on similarity.
 
-    This function loads precomputed image features from a specified file, applies PCA for dimensionality reduction,
-    and then clusters the images using KMeans. The images are grouped into clusters based on their feature vectors.
 
-    :param featuresFile: Path to the file containing saved image features.
-    :type featuresFile: str
-
-    :return: A tuple containing:
-        - clustered_images (dict): A dictionary mapping cluster labels to lists of image names.
-        - centroids (numpy.ndarray): The cluster centers after the KMeans clustering.
-    :rtype: tuple
-    """
-    # Load saved features
-    # weights_only=True se puede incluir para evitar warnings dado que solo queremos cargar los pesos del modelo
-    image_features = torch.load(featuresFile, weights_only=True)
-
-    # Convert feature tensors to a matrix for clustering
-    feature_matrix = torch.stack(list(image_features.values())).numpy()
-
-    # Dimensionality reduction (optional)
-    pca = PCA(n_components=processControl.defaults['features'])  # Reduce dimensions
-    reduced_features = pca.fit_transform(feature_matrix)
-    joblib.dump(pca, os.path.join(processControl.env['models'], "pca_transform.pkl"))
-    # Clustering
-    num_clusters = len(processControl.defaults['imageClasses'])
-    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-    kmeans.fit(reduced_features)  # Train clustering
-    cluster_labels = kmeans.predict(reduced_features)
-
-    centroids = kmeans.cluster_centers_
-
-    # Assign images to clusters
-    clustered_images = {i: [] for i in range(num_clusters)}
-    for idx, image_name in enumerate(image_features.keys()):
-        clustered_images[cluster_labels[idx]].append(image_name)
-
-    # Print clusters
-    for cluster, images in clustered_images.items():
-        log_("info", logger, f"Clustering {len(images)} images")
-
-    return clustered_images, centroids
-
-def structureFiles(clustered_images):
+def structureFiles(clustered_images, model):
     """
     Organize images into directories based on their cluster labels.
 
@@ -137,9 +343,12 @@ def structureFiles(clustered_images):
     :return: None
     :rtype: None
     """
+    dirModelPath = os.path.join(processControl.env['outputPath'], model)
+    if not os.path.exists(dirModelPath):
+        os.makedirs(dirModelPath)
     for index, images in clustered_images.items():
         # Create directory name
-        dir_name = os.path.join(processControl.env['outputPath'], f"images_{index}")
+        dir_name = os.path.join(dirModelPath, f"images_{index}")
 
         # Create the directory if it doesn't exist
         if not os.path.exists(dir_name):
@@ -199,6 +408,7 @@ def optimizeDimensions(image_features):
 
     feature_matrix = np.array([tensor.numpy() for tensor in image_features.values()])
     image_names = list(image_features.keys())
+    #feature_matrix = feature_matrix.squeeze(axis=1)
     # Initialize PCA without specifying n_components to analyze variance
     pca = PCA()
     pca.fit(feature_matrix)
@@ -242,7 +452,12 @@ def processFeatures():
         - imagesLabels (dict): A dictionary mapping image names to their corresponding cluster labels.
     :rtype: tuple
     """
-    # Step 1: Extract features from images in the input directory
+    #newProcessFeatures()
+
+    imageList = buildImageProcess()
+    from sources.llavaCaptions import processLLAVA
+    processLLAVA(imageList)
+
     imageFeatures = featureExtract(processControl.env['inputPath'])
 
     # Step 2: Optimize the dimensionality of the extracted features using PCA
@@ -252,10 +467,10 @@ def processFeatures():
     featuresFile = saveModel(imageFeatures, "features")
 
     # Step 4: Cluster the images based on their features
-    clusteredImages, centroids = clusterImages(featuresFile)
+    clusteredImages = clusterImages(None, imageFeatures)
 
     # Step 5: Organize the images into directories based on their clusters
-    structureFiles(clusteredImages)
+    structureFiles(clusteredImages, processControl.args.featuresmodel)
 
     # Step 6: Build a mapping of images to their cluster labels
     imagesLabels = buildLabels(clusteredImages)

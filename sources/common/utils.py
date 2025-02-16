@@ -1,8 +1,10 @@
+from sources.common.common import logger, processControl, log_
 import json
 
 import time
 import os
 from os.path import isdir
+from huggingface_hub import login
 
 
 def mkdir(dir_path):
@@ -76,3 +78,22 @@ def convert_docx_to_txt(input_path, output_path=None):
 
 
     return text
+
+def buildImageProcess(DirectoryPath=None):
+    result = []
+    supported_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff']
+    for image_name in os.listdir(DirectoryPath):
+        if os.path.splitext(image_name)[1].lower() in supported_extensions:
+            result.append({"path": os.path.join(DirectoryPath, image_name), "name": image_name})
+    return result
+
+
+def huggingface_login():
+    try:
+        # Add your Hugging Face token here, or retrieve it from environment variables
+        token = processControl.defaults['token'] if 'token' in processControl.defaults else ['', '']
+        login(token)
+        print("Successfully logged in to Hugging Face.")
+    except Exception as e:
+        print("Error logging into Hugging Face:", str(e))
+        raise
