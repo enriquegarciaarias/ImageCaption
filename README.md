@@ -81,6 +81,3 @@ python3 main.py -h
 ```
 Where the option MODEL stands for extracting features, distribute the images on subdirectories inside the process/output directory and creating the model.
 The option APPLY stands for using the model to new images in the process/input directory
-
-
-
