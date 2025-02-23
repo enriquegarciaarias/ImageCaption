@@ -9,7 +9,7 @@ def processLLaVA(device):
     from llava.mm_utils import get_model_name_from_path
     from llava.eval.run_llava import eval_model
     log_("info", logger, f"Start process LLaVA")
-    documentContextpath = "RAMNOUS.docx"
+    documentContextpath = os.path.join(processControl.env['inputPath'], 'RAMNOUS.docx')
 
     metadata = {
         "cluster": "Panorámica",
@@ -19,6 +19,7 @@ def processLLaVA(device):
     }
     keywords = ["Némesis", "Santuario de Némesis", "Planta del Santuario de Némesis"]
     context_text = buildContextData(documentContextpath, keywords, top_n=5)
+    log_("info", logger, f"Contexto generado: {context_text}")
 
     # 4️Cargar LLaVA
     model_path = "liuhaotian/llava-v1.5-7b"
@@ -29,7 +30,7 @@ def processLLaVA(device):
     )
 
     # 5️Cargar la imagen a analizar
-    image_path = "test_image.jpg"
+    image_path = os.path.join(processControl.env['inputPath'], 'Diapo 13.4 Recinto funerario de la familia de Menéstides.JPG')
     image = Image.open(image_path).convert("RGB")
 
     # 6️Tokenizar el contexto y procesar la imagen
@@ -39,4 +40,4 @@ def processLLaVA(device):
     # 7️Generar la descripción con LLaVA
     output = eval_model(model, tokenizer, image_tensor, inputs.input_ids)
 
-    print("Descripción generada:", output)
+    log_("info", logger, f"Descripción generada: {output}")
