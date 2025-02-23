@@ -7,15 +7,11 @@ github_pat_11A7I3QOA0BlFYudSSbos5_ReraSL0k8PnO6J0AqojME4heHl5qJI7DGWTCozsx1wMVAK
 """
 
 from sources.common.common import processControl, logger, log_
+from sources.common.utils import huggingface_login
 from sources.common.paramsManager import getConfigs
-from sources.processFeatures import processFeatures
-from sources.processTrain import processTrain, processApply
-from sources.dataManager import saveModel
 
-import socket
 import torch
 import os
-
 
 
 def mainProcess():
@@ -36,22 +32,33 @@ def mainProcess():
     processControl.process['modelName'] = "ViT-L/14"
     processControl.process['pretrainedDataset'] = "laion2b_s32b_b82k"
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    log_("info", logger, f"Using device: {device}")
+
     # MODEL mode: Extract features, train the model, and save it
     if processControl.args.proc == "MODEL":
+        from sources.processFeatures import processFeatures
+        from sources.processTrain import processTrain
+        from sources.dataManager import saveModel
         featuresFile, imagesLabels = processFeatures()
         model = processTrain(featuresFile, imagesLabels)
         result = saveModel(model, processControl.args.model)
 
     # APPLY mode: Apply the trained model to new data
     if processControl.args.proc == "APPLY":
+        huggingface_login()
         if processControl.args.model == "LLM":
-            from sources.processLLM import processLLM
-            processLLM()
+            from sources.processLLM import processLlama2
+            processLlama2()
         elif processControl.args.model == "MISTRAL":
             from sources.processLLM import processMistral
             processMistral()
+        elif processControl.args.model == "LLaVA":
+            from sources.processLLaVA import processLLaVA
+            processLLaVA(device)
         else:
-            processApply()
+            from sources.processTrain import processApply
+            result = processApply()
 
     return True
 
@@ -74,8 +81,6 @@ if __name__ == '__main__':
 
     log_("info", logger, "********** STARTING Main Image Caption Process **********")
     getConfigs()
-
-
     print(f"System Name: {processControl.env['systemName']}")
     if processControl.env['systemName'] == "tesla.informatica.uned.es":
         import torch.distributed as dist
@@ -99,7 +104,5 @@ if __name__ == '__main__':
         log_("info", logger, "This is Local")
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         mainProcess()
-
-
 
     log_("info", logger, "********** PROCESS COMPLETED **********")

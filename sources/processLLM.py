@@ -1,7 +1,6 @@
 from sources.common.common import logger, processControl, log_
-from sources.common.utils import convert_docx_to_txt
+from sources.common.utils import convert_docx_to_txt, huggingface_login
 import os
-
 
 """
     Metadatos:
@@ -26,18 +25,6 @@ from huggingface_hub import login
 import torch
 from sentence_transformers import SentenceTransformer, util
 import re
-
-
-def huggingface_login():
-    try:
-        # Add your Hugging Face token here, or retrieve it from environment variables
-        token = processControl.defaults['token'] if 'token' in processControl.defaults else ['', '']
-        login(token)
-        print("Successfully logged in to Hugging Face.")
-    except Exception as e:
-        print("Error logging into Hugging Face:", str(e))
-        raise
-
 
 def processMistral():
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -96,30 +83,8 @@ def processMistral():
 
     log_("info", logger, f"Descripción generada: {descripcion}")
 
-def extract_relevant_paragraphs(embedding_model, text, keywords, top_n=5):
-    """
-    Extrae los párrafos más relevantes en base a palabras clave y similitud semántica.
 
-    :param text: Texto largo con información detallada.
-    :param keywords: Lista de palabras clave relacionadas con la imagen.
-    :param top_n: Número de párrafos relevantes a extraer.
-    :return: Lista de párrafos relevantes.
-    """
-    paragraphs = re.split(r'\n\n+', text)  # Separar por párrafos
-    keyword_text = " ".join(keywords)  # Convertir keywords en una frase base
 
-    # Obtener embeddings de párrafos y de las keywords
-    keyword_embedding = embedding_model.encode(keyword_text, convert_to_tensor=True)
-    paragraph_embeddings = embedding_model.encode(paragraphs, convert_to_tensor=True)
-
-    # Calcular similaridad coseno entre keywords y párrafos
-    similarities = util.pytorch_cos_sim(keyword_embedding, paragraph_embeddings)[0]
-
-    # Seleccionar los párrafos más relevantes
-    top_indices = similarities.argsort(descending=True)[:top_n]
-    relevant_paragraphs = [paragraphs[i] for i in top_indices]
-
-    return relevant_paragraphs
 
 def generate_caption(tokenizer, model, metadata, extracted_text, max_words=300):
     """
@@ -138,17 +103,13 @@ def generate_caption(tokenizer, model, metadata, extracted_text, max_words=300):
     📖 **Tarea**:
     Basado en el extracto relevante, genera un caption claro y conciso (máx. {max_words} palabras).
     """
-
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=4096).to("cuda")
     output_ids = model.generate(**inputs, max_new_tokens=400, temperature=0.7)
     caption = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-
     return caption
 
 
-def processLLM():
-
-
+def processLlama2():
     huggingface_login()
     # Cargar el tokenizador y el modelo LLaMA 2
     model_name = "meta-llama/Llama-2-13b-chat-hf"  # Ajusta el tamaño del modelo según tus recursos
@@ -189,3 +150,4 @@ def processLLM():
     descripcion = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     log_("info", logger, f"Descripción generada: {descripcion}")
+
